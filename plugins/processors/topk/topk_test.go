@@ -130,7 +130,7 @@ func runAndCompare(topk *TopK, metrics []telegraf.Metric, answer []telegraf.Metr
 	ret := topk.Apply(metrics...)
 	topk.Reset()
 
-	// The returned set mut be equal to the answer set
+	// The returned set must be equal to the answer set
 	if !equalSets(ret, answer) {
 		t.Error("\nExpected metrics for", testID, ":\n",
 			answer, "\nReturned metrics:\n", ret)
@@ -291,16 +291,17 @@ func TestTopkGroupby1(t *testing.T) {
 	topk.Aggregation = "sum"
 	topk.AddAggregateFields = []string{"value"}
 	topk.GroupBy = []string{"tag[13]"}
+	topk.AddRankFields = []string{"value"}
 
 	// Get the input
 	input := deepCopy(MetricsSet2)
 
 	// Generate the answer
 	changeSet := map[int]metricChange{
-		2: {newFields: fieldList(field{"value_topk_aggregate", float64(74.18)})},
-		3: {newFields: fieldList(field{"value_topk_aggregate", float64(72)})},
-		4: {newFields: fieldList(field{"value_topk_aggregate", float64(163.22)})},
-		5: {newFields: fieldList(field{"value_topk_aggregate", float64(163.22)})},
+		2: {newFields: fieldList(field{"value_topk_aggregate", float64(74.18)}, field{"value_topk_rank", 2})},
+		3: {newFields: fieldList(field{"value_topk_aggregate", float64(72)}, field{"value_topk_rank", 3})},
+		4: {newFields: fieldList(field{"value_topk_aggregate", float64(163.22)}, field{"value_topk_rank", 1})},
+		5: {newFields: fieldList(field{"value_topk_aggregate", float64(163.22)}, field{"value_topk_rank", 1})},
 	}
 	answer := generateAns(input, changeSet)
 
@@ -317,14 +318,15 @@ func TestTopkGroupby2(t *testing.T) {
 	topk.Aggregation = "mean"
 	topk.AddAggregateFields = []string{"value"}
 	topk.GroupBy = []string{"tag1"}
+	topk.AddRankFields = []string{"value"}
 
 	// Get the input
 	input := deepCopy(MetricsSet2)
 
 	// Generate the answer
-	chng1 := fieldList(field{"value_topk_aggregate", float64(66.805)})
-	chng2 := fieldList(field{"value_topk_aggregate", float64(72)})
-	chng3 := fieldList(field{"value_topk_aggregate", float64(81.61)})
+	chng1 := fieldList(field{"value_topk_aggregate", float64(66.805)}, field{"value_topk_rank", 3})
+	chng2 := fieldList(field{"value_topk_aggregate", float64(72)}, field{"value_topk_rank", 2})
+	chng3 := fieldList(field{"value_topk_aggregate", float64(81.61)}, field{"value_topk_rank", 1})
 	changeSet := map[int]metricChange{
 		1: {newFields: chng1},
 		2: {newFields: chng1},
@@ -347,6 +349,7 @@ func TestTopkGroupby3(t *testing.T) {
 	topk.Aggregation = "min"
 	topk.AddAggregateFields = []string{"value"}
 	topk.GroupBy = []string{"tag4"}
+	topk.AddRankFields = []string{"A"}
 
 	// Get the input
 	input := deepCopy(MetricsSet2)
@@ -375,16 +378,17 @@ func TestTopkGroupbyFields1(t *testing.T) {
 	topk.AddAggregateFields = []string{"A"}
 	topk.GroupBy = []string{"tag1", "tag2"}
 	topk.Fields = []string{"A"}
+	topk.AddRankFields = []string{"A"}
 
 	// Get the input
 	input := deepCopy(MetricsSet2)
 
 	// Generate the answer
 	changeSet := map[int]metricChange{
-		0: {newFields: fieldList(field{"A_topk_aggregate", float64(95.36)})},
-		1: {newFields: fieldList(field{"A_topk_aggregate", float64(39.01)})},
-		2: {newFields: fieldList(field{"A_topk_aggregate", float64(39.01)})},
-		5: {newFields: fieldList(field{"A_topk_aggregate", float64(29.45)})},
+		0: {newFields: fieldList(field{"A_topk_aggregate", float64(95.36)}, field{"A_topk_rank", 1})},
+		1: {newFields: fieldList(field{"A_topk_aggregate", float64(39.01)}, field{"A_topk_rank", 2})},
+		2: {newFields: fieldList(field{"A_topk_aggregate", float64(39.01)}, field{"A_topk_rank", 2})},
+		5: {newFields: fieldList(field{"A_topk_aggregate", float64(29.45)}, field{"A_topk_rank", 3})},
 	}
 	answer := generateAns(input, changeSet)
 
@@ -403,16 +407,17 @@ func TestTopkGroupbyFields2(t *testing.T) {
 	topk.AddAggregateFields = []string{"B", "C"}
 	topk.GroupBy = []string{"tag1", "tag3"}
 	topk.Fields = []string{"B", "C"}
+	topk.AddRankFields = []string{"B", "C"}
 
 	// Get the input
 	input := deepCopy(MetricsSet2)
 
 	// Generate the answer
 	changeSet := map[int]metricChange{
-		0: {newFields: fieldList(field{"C_topk_aggregate", float64(72.41)})},
-		2: {newFields: fieldList(field{"B_topk_aggregate", float64(60.96)})},
-		4: {newFields: fieldList(field{"B_topk_aggregate", float64(81.55)}, field{"C_topk_aggregate", float64(49.96)})},
-		5: {newFields: fieldList(field{"C_topk_aggregate", float64(49.96)})},
+		0: {newFields: fieldList(field{"C_topk_aggregate", float64(72.41)}, field{"C_topk_rank", 1})},
+		2: {newFields: fieldList(field{"B_topk_aggregate", float64(60.96)}, field{"B_topk_rank", 2})},
+		4: {newFields: fieldList(field{"B_topk_aggregate", float64(81.55)}, field{"C_topk_aggregate", float64(49.96)}, field{"B_topk_rank", 1}, field{"C_topk_rank", 2})},
+		5: {newFields: fieldList(field{"C_topk_aggregate", float64(49.96)}, field{"C_topk_rank", 2})},
 	}
 	answer := generateAns(input, changeSet)
 
@@ -459,16 +464,17 @@ func TestTopkGroupbyMetricName2(t *testing.T) {
 	topk.AddAggregateFields = []string{"A", "value"}
 	topk.GroupBy = []string{"tag[12]"}
 	topk.Fields = []string{"A", "value"}
+	topk.AddRankFields = []string{"A", "value"}
 
 	// Get the input
 	input := deepCopy(MetricsSet2)
 
 	// Generate the answer
 	changeSet := map[int]metricChange{
-		0: {newFields: fieldList(field{"A_topk_aggregate", float64(95.36)})},
-		1: {newFields: fieldList(field{"A_topk_aggregate", float64(78.02)}, field{"value_topk_aggregate", float64(133.61)})},
-		2: {newFields: fieldList(field{"A_topk_aggregate", float64(78.02)}, field{"value_topk_aggregate", float64(133.61)})},
-		4: {newFields: fieldList(field{"value_topk_aggregate", float64(87.92)})},
+		0: {newFields: fieldList(field{"A_topk_aggregate", float64(95.36)}, field{"A_topk_rank", 1})},
+		1: {newFields: fieldList(field{"A_topk_aggregate", float64(78.02)}, field{"value_topk_aggregate", float64(133.61)}, field{"A_topk_rank", 2}, field{"value_topk_rank", 1})},
+		2: {newFields: fieldList(field{"A_topk_aggregate", float64(78.02)}, field{"value_topk_aggregate", float64(133.61)}, field{"A_topk_rank", 2}, field{"value_topk_rank", 1})},
+		4: {newFields: fieldList(field{"value_topk_aggregate", float64(87.92)}, field{"value_topk_rank", 2})},
 	}
 	answer := generateAns(input, changeSet)
 
@@ -501,6 +507,34 @@ func TestTopkBottomk(t *testing.T) {
 
 	// Run the test
 	runAndCompare(&topk, input, answer, "Bottom k test", t)
+}
+
+func TestTopkBottomk2(t *testing.T) {
+
+	// Build the processor
+	var topk TopK
+	topk = *New()
+	topk.Period = createDuration(1)
+	topk.K = 3
+	topk.Aggregation = "sum"
+	topk.AddAggregateFields = []string{"value"}
+	topk.GroupBy = []string{"tag[13]"}
+	topk.AddRankFields = []string{"value"}
+	topk.Bottomk = true
+
+	// Get the input
+	input := deepCopy(MetricsSet2)
+
+	// Generate the answer
+	changeSet := map[int]metricChange{
+		0: {newFields: fieldList(field{"value_topk_aggregate", float64(31.31)}, field{"value_topk_rank", 1})},
+		1: {newFields: fieldList(field{"value_topk_aggregate", float64(59.43)}, field{"value_topk_rank", 2})},
+		3: {newFields: fieldList(field{"value_topk_aggregate", float64(72)}, field{"value_topk_rank", 3})},
+	}
+	answer := generateAns(input, changeSet)
+
+	// Run the test
+	runAndCompare(&topk, input, answer, "GroupBy test 1", t)
 }
 
 // GroupByKeyTag

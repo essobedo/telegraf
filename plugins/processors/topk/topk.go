@@ -1,6 +1,7 @@
 package topk
 
 import (
+	"container/heap"
 	"fmt"
 	"log"
 	"math"
@@ -30,6 +31,63 @@ type TopK struct {
 	rankFieldSet    map[string]bool
 	aggFieldSet     map[string]bool
 	lastAggregation time.Time
+}
+
+// Heap of MetricAggregations that implements the heap.Interface
+type Heap struct {
+	aggregations []*MetricAggregation
+	reverse      bool
+	maxSize      int
+	field        string
+}
+
+// Len is the number of elements in the heap.
+func (h Heap) Len() int {
+	return len(h.aggregations)
+}
+
+// Less reports whether the aggregation with
+// index i should sort before the aggregation with index j.
+func (h Heap) Less(i, j int) bool {
+	return h.before(h.aggregations[i].values[h.field], h.aggregations[j].values[h.field])
+}
+
+// before compares two aggregation's value according to the expected sorting side.
+// If reverse is true then we expect the head to be the biggest value so we expect the bottomK
+// If reverse is false then we expect the head to be the lowest value so we expect the topK
+func (h Heap) before(f1, f2 float64) bool {
+	if h.reverse {
+		return f1 > f2
+	}
+	return f1 < f2
+}
+
+// Swap swaps the aggregation with indexes i and j.
+func (h Heap) Swap(i, j int) {
+	h.aggregations[i], h.aggregations[j] = h.aggregations[j], h.aggregations[i]
+}
+
+// Push adds a new aggregation
+func (h *Heap) Push(x interface{}) {
+	n := len(h.aggregations)
+	aggregation := x.(*MetricAggregation)
+	if n < h.maxSize {
+		h.aggregations = append(h.aggregations, aggregation)
+	} else if h.before(h.aggregations[0].values[h.field], aggregation.values[h.field]) {
+		// Remove the head and try again
+		heap.Pop(h)
+		heap.Push(h, x)
+	}
+}
+
+// Pop removes and returns the head of heap
+func (h *Heap) Pop() interface{} {
+	old := h.aggregations
+	n := len(old)
+	aggregation := old[n-1]
+	old[n-1] = nil // avoid memory leak
+	h.aggregations = old[0 : n-1]
+	return aggregation
 }
 
 func New() *TopK {
@@ -106,22 +164,20 @@ type MetricAggregation struct {
 	values     map[string]float64
 }
 
-func sortMetrics(metrics []MetricAggregation, field string, reverse bool) {
-	less := func(i, j int) bool {
-		iv := metrics[i].values[field]
-		jv := metrics[j].values[field]
-		if iv < jv {
-			return true
-		} else {
-			return false
-		}
+// buildHeap gives a heap sorted by the given field, in the side corresponding
+// to the value of reverse
+func (t *TopK) buildHeap(metrics []MetricAggregation, field string, reverse bool) Heap {
+	h := Heap{
+		aggregations: make([]*MetricAggregation, 0, t.K),
+		reverse:      reverse,
+		maxSize:      t.K,
+		field:        field,
 	}
-
-	if reverse {
-		sort.SliceStable(metrics, less)
-	} else {
-		sort.SliceStable(metrics, func(i, j int) bool { return !less(i, j) })
+	heap.Init(&h)
+	for i := range metrics {
+		heap.Push(&h, &metrics[i])
 	}
+	return h
 }
 
 func (t *TopK) SampleConfig() string {
@@ -284,11 +340,13 @@ func (t *TopK) push() []telegraf.Metric {
 	for _, field := range t.Fields {
 
 		// Sort the aggregations
-		sortMetrics(aggregations, field, t.Bottomk)
+		h := t.buildHeap(aggregations, field, t.Bottomk)
 
+		totalAgg := h.Len()
 		// Create a one dimensional list with the top K metrics of each key
-		for i, ag := range aggregations[0:min(t.K, len(aggregations))] {
-			// Check whether of not we need to add fields of tags to the selected metrics
+		for i := totalAgg; i > 0; i-- {
+			ag := heap.Pop(&h).(*MetricAggregation)
+			// Check whether or not we need to add fields or tags to the selected metrics
 			if len(t.aggFieldSet) != 0 || len(t.rankFieldSet) != 0 || t.AddGroupByTag != "" {
 				for _, m := range t.cache[ag.groupbykey] {
 					// Add the aggregation final value if requested
@@ -300,7 +358,7 @@ func (t *TopK) push() []telegraf.Metric {
 					// Add the rank relative to the current field if requested
 					_, addRankField := t.rankFieldSet[field]
 					if addRankField && m.HasField(field) {
-						m.AddField(field+"_topk_rank", i+1)
+						m.AddField(field+"_topk_rank", i)
 					}
 				}
 			}
